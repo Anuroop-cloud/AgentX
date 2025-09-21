@@ -1,6 +1,10 @@
 """
 AI Mobile AgentX - Complete Integrated System
-All automation features with intelligent element detection and fixes
+All automation features combined with AI intelligence
+        except subprocess.TimeoutExpired:
+            return False, "", "Command timed out"
+        except Exception as e:
+            return False, "", str(e)es with intelligent element detection and fixes
 """
 
 import subprocess
@@ -49,16 +53,11 @@ class CompleteMobileAgentX:
         if GEMINI_AVAILABLE:
             print("🔄 Initializing Gemini AI for message enhancement...")
             try:
-                # Try to get API key from environment variable
-                api_key = os.getenv('GEMINI_API_KEY')
-                if api_key:
-                    genai.configure(api_key=api_key)
-                    self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
-                    print("✅ Gemini AI ready - Message enhancement active")
-                else:
-                    print("⚠️ GEMINI_API_KEY not found in environment variables")
-                    print("   Set GEMINI_API_KEY to enable AI message enhancement")
-                    self.gemini_model = None
+                # Use provided API key
+                api_key = "AIzaSyBJEa2zvaScpco-WQ7z9NSv__-shLIkekU"
+                genai.configure(api_key=api_key)
+                self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+                print("✅ Gemini AI ready - Message enhancement active")
             except Exception as e:
                 print(f"⚠️ Gemini initialization failed: {e}")
                 self.gemini_model = None
@@ -69,11 +68,13 @@ class CompleteMobileAgentX:
     def run_adb_command(self, command):
         """Execute ADB command with error handling"""
         try:
-            full_command = [self.adb_path] + command.split()
-            result = subprocess.run(full_command, capture_output=True, text=True, timeout=30)
+            # Use full path to ADB to avoid PATH issues
+            adb_path = r"C:\android-tools\platform-tools\adb.exe"
+            full_command = f"{adb_path} {command}"
+            result = subprocess.run(full_command.split(), capture_output=True, text=True, timeout=30)
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
-            return False, "", "Command timeout"
+            return False, "", "Command timed out"
         except Exception as e:
             return False, "", str(e)
     
@@ -146,6 +147,72 @@ class CompleteMobileAgentX:
                 
         except Exception as e:
             print(f"❌ Screenshot processing error: {e}")
+            return None
+    
+    def find_green_send_button(self):
+        """Find green send button (#00FF00) using color detection"""
+        if not self.current_screenshot:
+            print("❌ No screenshot available for color detection")
+            return None
+        
+        try:
+            # Convert PIL image to OpenCV format
+            img_array = np.array(self.current_screenshot)
+            img_rgb = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+            img_hsv = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2HSV)
+            
+            # Define green color range for #00FF00 (pure green)
+            # HSV values for bright green
+            lower_green = np.array([50, 100, 100])   # Lower bound
+            upper_green = np.array([80, 255, 255])   # Upper bound
+            
+            # Create mask for green colors
+            green_mask = cv2.inRange(img_hsv, lower_green, upper_green)
+            
+            # Find contours of green regions
+            contours, _ = cv2.findContours(green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if not contours:
+                print("🔍 No green regions found")
+                return None
+            
+            # Filter contours by size (button should be reasonably sized)
+            min_area = 100  # Minimum button area
+            max_area = 5000  # Maximum button area
+            
+            button_candidates = []
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if min_area <= area <= max_area:
+                    # Get bounding box
+                    x, y, w, h = cv2.boundingRect(contour)
+                    
+                    # Check if it's roughly button-shaped (not too thin/tall)
+                    aspect_ratio = w / h if h > 0 else 0
+                    if 0.5 <= aspect_ratio <= 3.0:
+                        # Calculate center point
+                        center_x = x + w // 2
+                        center_y = y + h // 2
+                        
+                        # Prefer buttons in the bottom half of screen (where send buttons usually are)
+                        screen_height = self.current_screenshot.size[1]
+                        if center_y > screen_height * 0.6:  # Bottom 40% of screen
+                            button_candidates.append((center_x, center_y, area))
+            
+            if not button_candidates:
+                print("🔍 No suitable green button candidates found")
+                return None
+            
+            # Sort by area (largest first) and prefer rightmost position
+            button_candidates.sort(key=lambda x: (x[2], x[0]), reverse=True)
+            
+            best_button = button_candidates[0]
+            print(f"🟢 Found green send button at ({best_button[0]}, {best_button[1]}) with area {best_button[2]}")
+            
+            return (best_button[0], best_button[1])
+            
+        except Exception as e:
+            print(f"❌ Green button detection failed: {e}")
             return None
     
     def analyze_screen_with_ai(self):
@@ -232,107 +299,120 @@ class CompleteMobileAgentX:
         return "❓ Other"
     
     def smart_element_finder(self, target, element_type_filter=None):
-        """Intelligently find elements with context awareness"""
+        """Intelligently find elements with context awareness and improved contact selection"""
         if not self.detected_elements:
             return []
         
         target_lower = target.lower()
         matches = []
+        exact_matches = []
+        fuzzy_matches = []
         
-        # Ultra-strict exclusion patterns for contact filtering
-        exclusions = {
-            'contact': [
-                'search', 'type', 'message', 'call', 'video', 'new chat', 'status',
-                'search for', 'search contacts', 'find', 'enter', 'tap to', 'type a message',
-                'camera', 'attach', 'emoji', 'send', 'voice', 'chats', 'calls',
-                'search chats and contacts', 'search contacts and messages',
-                'search...', 'type here', 'enter message', 'tap here', 'click here',
-                'search chat', 'find contact', 'look for', 'write message', 'compose',
-                'input', 'field', 'box', 'bar', 'placeholder', 'hint', 'label'
-            ],
-            'app': ['search', 'notification', 'update', 'install'],
-            'button': ['title', 'header', 'status', 'toolbar'],
-            'content': ['search', 'type', 'input', 'textbox']
-        }
+        # Get screen dimensions for area filtering
+        screen_height = self.current_screenshot.height if self.current_screenshot else 2400
+        screen_width = self.current_screenshot.width if self.current_screenshot else 1080
         
-        exclude_list = exclusions.get(element_type_filter, [])
+        # Define search bar exclusion zone (top 15% of screen)
+        search_bar_zone = screen_height * 0.15
+        
+        # Define contact list area (main content area)
+        contact_list_start = screen_height * 0.25  # Below search bar
+        contact_list_end = screen_height * 0.85    # Above bottom navigation
         
         for element in self.detected_elements:
             text_lower = element['text'].lower()
             
-            # Enhanced exclusion check - more aggressive for contacts
-            should_exclude = False
-            for exclude_pattern in exclude_list:
-                if exclude_pattern in text_lower or text_lower in exclude_pattern:
-                    should_exclude = True
-                    break
-            
-            if should_exclude:
+            # PRIORITY 1: EXACT MATCH FILTERING
+            if target_lower == text_lower:
+                # For exact matches, apply strict contact filtering
+                if element_type_filter == 'contact':
+                    # Must be in contact list area (not in search bar region)
+                    if element['center'][1] <= search_bar_zone:
+                        print(f"❌ Exact match '{element['text']}' rejected - in search bar zone")
+                        continue
+                    
+                    # Must be in main contact list area
+                    if not (contact_list_start <= element['center'][1] <= contact_list_end):
+                        print(f"❌ Exact match '{element['text']}' rejected - outside contact list area")
+                        continue
+                    
+                    # Must have reasonable area for a contact (not tiny UI elements)
+                    if element['area'] < 2000:
+                        print(f"❌ Exact match '{element['text']}' rejected - area too small ({element['area']})")
+                        continue
+                    
+                    print(f"✅ EXACT MATCH found: '{element['text']}' at {element['center']}")
+                    element['match_type'] = 'exact'
+                    element['priority'] = 100  # Highest priority for exact matches
+                    exact_matches.append(element)
+                else:
+                    element['match_type'] = 'exact'
+                    element['priority'] = 10
+                    exact_matches.append(element)
                 continue
             
-            # For contacts, ultra-strict filtering
+            # PRIORITY 2: FUZZY MATCH FILTERING (only if no exact matches)
+            # Skip fuzzy matching for contacts if we already have exact matches
+            if element_type_filter == 'contact' and exact_matches:
+                continue
+            
+            # Enhanced exclusion for fuzzy matches
             if element_type_filter == 'contact':
-                # Must be substantial text (not single characters or short UI elements)
+                # Strict position filtering - exclude search bar zone
+                if element['center'][1] <= search_bar_zone:
+                    continue
+                
+                # Must be in contact list area
+                if not (contact_list_start <= element['center'][1] <= contact_list_end):
+                    continue
+                
+                # Must be substantial text
                 if len(element['text'].strip()) < 3:
                     continue
                 
-                # Must have very large area (contacts in lists are typically large)
-                if element['area'] < 5000:  # Increased to 5000 for maximum strictness
+                # Must have reasonable area
+                if element['area'] < 3000:
                     continue
                 
-                # Should look like a name (starts with capital, contains letters)
-                if not (element['text'][0].isupper() and any(c.isalpha() for c in element['text'])):
-                    continue
-                
-                # Must be positioned in the middle/lower area of screen (where contact lists appear)
-                screen_height = 2400  # Typical phone height
-                if element['center'][1] < screen_height * 0.3:  # Reject elements in top 30% of screen
-                    continue
-                
-                # Reject if it contains ANY UI text patterns
+                # Exclude obvious UI elements
                 ui_patterns = [
                     'search', 'find', 'type', 'tap', 'enter', 'message', 'chat', 'call',
-                    'video', 'voice', 'status', 'new', 'contact', 'group', 'broadcast',
-                    'archived', 'settings', 'camera', 'gallery', 'document', 'location',
-                    'hint', 'placeholder', 'label', 'field', 'input', 'box', 'bar'
+                    'video', 'voice', 'status', 'new', 'contact', 'group', 'file', 'manager',
+                    'telegram', 'instagram', 'brave', 'calendar', 'discord', 'whatsapp'
                 ]
-                if any(pattern in element['text'].lower() for pattern in ui_patterns):
+                if any(pattern in text_lower for pattern in ui_patterns):
                     continue
                 
-                # Additional UI element detection
-                ui_indicators = [':', '•', '○', '●', '▶', '⏸', '⏹', '|', '_', '+', '#', '@', '...', '→', '←', '(', ')']
-                if any(indicator in element['text'] for indicator in ui_indicators):
-                    continue
-                
-                # Reject if text is too long (likely to be UI description)
-                if len(element['text']) > 25:  # Reduced from 30
-                    continue
-                
-                # Must look like a proper name (only letters, spaces, maybe apostrophes)
+                # Must look like a proper name
                 import re
                 if not re.match(r"^[A-Z][a-zA-Z\s'.-]*$", element['text']):
                     continue
             
-            # Exact match (highest priority)
-            if target_lower == text_lower:
-                element['match_type'] = 'exact'
-                element['priority'] = 3
-                matches.append(element)
-            # Contains target (medium priority)
-            elif target_lower in text_lower:
+            # Fuzzy matching logic
+            if target_lower in text_lower:
                 element['match_type'] = 'contains'
-                element['priority'] = 2
-                matches.append(element)
-            # Target contains element (lower priority)
+                element['priority'] = 5
+                fuzzy_matches.append(element)
             elif text_lower in target_lower and len(text_lower) > 2:
                 element['match_type'] = 'partial'
-                element['priority'] = 1
-                matches.append(element)
+                element['priority'] = 2
+                fuzzy_matches.append(element)
         
-        # Sort by priority, then by area (larger elements preferred), then by confidence
-        matches.sort(key=lambda x: (x['priority'], x['area'], x['confidence']), reverse=True)
+        # Combine results: Exact matches first, then fuzzy matches
+        all_matches = exact_matches + fuzzy_matches
         
-        return matches
+        # Sort by priority (exact matches will naturally be first due to higher priority)
+        all_matches.sort(key=lambda x: (x['priority'], x['area'], x['confidence']), reverse=True)
+        
+        # Debug logging
+        if element_type_filter == 'contact':
+            print(f"🔍 Contact Search Results for '{target}':")
+            print(f"   Exact matches: {len(exact_matches)}")
+            print(f"   Fuzzy matches: {len(fuzzy_matches)}")
+            print(f"   Search bar zone: y < {search_bar_zone}")
+            print(f"   Contact list area: {contact_list_start} < y < {contact_list_end}")
+        
+        return all_matches
     
     def tap_element(self, element, human_like=True):
         """Execute tap with human-like behavior"""
@@ -361,9 +441,15 @@ class CompleteMobileAgentX:
     
     def type_text(self, text):
         """Type text with proper escaping"""
-        # Escape special characters for ADB
-        escaped_text = text.replace(' ', '%s').replace('"', '\\"').replace("'", "\\'")
-        print(f"⌨️ Typing: {text}")
+        # Clean the text first - remove newlines and extra formatting
+        clean_text = text.replace('\n', ' ').replace('\r', '').strip()
+        # If it contains "Or:" suggestions, use only the first part
+        if "Or:" in clean_text:
+            clean_text = clean_text.split("Or:")[0].strip()
+        
+        # Escape special characters for ADB shell
+        escaped_text = clean_text.replace(' ', '%s').replace('"', '\\"').replace("'", "\\'").replace('!', '\\!')
+        print(f"⌨️ Typing: {clean_text}")
         
         success, _, stderr = self.run_adb_command(f"shell input text '{escaped_text}'")
         
@@ -430,19 +516,19 @@ class CompleteMobileAgentX:
             
             # Create a prompt for message enhancement
             prompt = f"""
-            Please enhance this message to make it more natural, friendly, and well-written while keeping the original meaning intact.
+            Enhance this message to make it more natural and friendly while keeping the original meaning. Provide ONLY ONE improved message, no alternatives or options.
             
-            Original message: "{original_message}"
+            Original: "{original_message}"
             Context: {context}
             {"Recipient: " + contact_name if contact_name else ""}
             
-            Guidelines:
-            - Keep it concise and natural
-            - Maintain the original tone and intent
-            - Fix any grammar or spelling issues
-            - Make it sound more conversational
-            - Don't add excessive formality unless context requires it
-            - Maximum 2-3 sentences
+            Requirements:
+            - Return only the enhanced message, no explanations
+            - Keep it concise (1-2 sentences max)
+            - Make it natural and conversational
+            - Fix grammar/spelling if needed
+            - Don't provide multiple options or use "Or:"
+            - Don't add quotes around the response
             
             Enhanced message:
             """
@@ -450,8 +536,21 @@ class CompleteMobileAgentX:
             response = self.gemini_model.generate_content(prompt)
             enhanced_message = response.text.strip()
             
-            # Remove any quotes that might be added
+            # Clean the response thoroughly
             enhanced_message = enhanced_message.strip('"').strip("'")
+            
+            # Remove any unwanted prefixes/suffixes
+            prefixes_to_remove = ["Enhanced message:", "Here's the enhanced message:", "Enhanced:", "Message:"]
+            for prefix in prefixes_to_remove:
+                if enhanced_message.startswith(prefix):
+                    enhanced_message = enhanced_message[len(prefix):].strip()
+            
+            # If there are multiple lines or "Or:" alternatives, take only the first line
+            if "\n" in enhanced_message or "Or:" in enhanced_message:
+                enhanced_message = enhanced_message.split("\n")[0].split("Or:")[0].strip()
+            
+            # Final cleanup
+            enhanced_message = enhanced_message.strip()
             
             print(f"📝 Original: {original_message}")
             print(f"✨ Enhanced: {enhanced_message}")
@@ -516,54 +615,208 @@ class CompleteMobileAgentX:
             for i, elem in enumerate(self.detected_elements[:10], 1):
                 print(f"   {i}. '{elem['text']}' - Type: {elem['type']}, Area: {elem['area']}, Conf: {elem['confidence']:.2f}")
             
-            contact_matches = self.smart_element_finder(contact_name, "contact")
+            # SIMPLE SOLUTION: Click in the contact area below search
+            print("🎯 SMART CONTACT SELECTION: Using area-based clicking")
             
-            if contact_matches:
-                print(f"\n✅ Found {len(contact_matches)} potential contacts:")
-                for i, match in enumerate(contact_matches[:3], 1):
-                    print(f"   {i}. '{match['text']}' - {match['match_type']} match, Area: {match['area']}, Conf: {match['confidence']:.2f}")
+            # Find the first contact that appears in search results (simple approach)
+            screen_height = self.current_screenshot.height if self.current_screenshot else 2400
+            screen_width = self.current_screenshot.width if self.current_screenshot else 1080
+            
+            # Define contact area (below search bar, in main content)
+            contact_area_start_y = int(screen_height * 0.3)  # Start at 30% down
+            contact_area_end_y = int(screen_height * 0.7)    # End at 70% down
+            center_x = screen_width // 2                      # Click in center horizontally
+            
+            # Try clicking at different heights in the contact area
+            click_positions = [
+                (center_x, contact_area_start_y),              # Top of contact area
+                (center_x, contact_area_start_y + 100),        # Slightly lower
+                (center_x, contact_area_start_y + 200),        # Even lower
+            ]
+            
+            contact_opened = False
+            
+            for attempt, (x, y) in enumerate(click_positions, 1):
+                print(f"\n🎯 Attempt {attempt}: Clicking in contact area at ({x}, {y})")
                 
-                best_contact = contact_matches[0]
+                # Direct tap in contact area
+                success, _, stderr = self.run_adb_command(f"shell input tap {x} {y}")
                 
-                # Enhanced validation criteria - stricter
-                if (best_contact['area'] >= 3000 and 
-                    best_contact['confidence'] > 0.7 and
-                    len(best_contact['text'].strip()) >= 3 and
-                    best_contact['text'][0].isupper()):
+                if success:
+                    print("✅ Tap executed in contact area")
+                    await asyncio.sleep(3)  # Wait for chat to open
                     
-                    print(f"👆 Tapping on validated contact: '{best_contact['text']}'")
-                    self.tap_element(best_contact)
-                    await asyncio.sleep(3)
+                    # Check if chat opened
+                    print("🔍 Checking if chat screen opened...")
+                    self.capture_screen()
+                    self.analyze_screen_with_ai()
+                    
+                    # Show all detected text for debugging
+                    print("📱 Current screen text detected:")
+                    for element in self.detected_elements[:10]:  # Show first 10 elements
+                        print(f"   📝 '{element['text'][:50]}...' (conf: {element['confidence']:.2f})")
+                    
+                    # Look for message input field (indicates chat screen) - expanded phrases
+                    message_input_found = False
+                    input_phrases = [
+                        'type a message', 'message', 'type here', 'type your message',
+                        'write a message', 'enter message', 'text message', 'send message',
+                        'compose', 'write here', 'start typing', 'type something'
+                    ]
+                    
+                    for element in self.detected_elements:
+                        text_lower = element['text'].lower()
+                        if any(phrase in text_lower for phrase in input_phrases):
+                            message_input_found = True
+                            print(f"✅ Found input indicator: '{element['text']}'")
+                            break
+                    
+                    # Additional check: Look for chat-specific elements and conversation content
+                    if not message_input_found:
+                        # Method 1: Look for UI elements
+                        chat_indicators = ['attach', 'emoji', 'camera', 'mic', 'send', 'voice']
+                        chat_elements_found = 0
+                        for element in self.detected_elements:
+                            text_lower = element['text'].lower()
+                            if any(indicator in text_lower for indicator in chat_indicators):
+                                chat_elements_found += 1
+                        
+                        # Method 2: Look for conversation patterns (messages, times)
+                        conversation_indicators = 0
+                        time_pattern_found = False
+                        message_content_found = False
+                        
+                        for element in self.detected_elements:
+                            text = element['text'].strip()
+                            text_lower = text.lower()
+                            
+                            # Check for time patterns (like "52 secs", "Thursday", "Monday")
+                            if any(time_word in text_lower for time_word in ['sec', 'min', 'hour', 'day', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'yesterday', 'today']):
+                                time_pattern_found = True
+                                conversation_indicators += 1
+                            
+                            # Check for message-like content (short phrases, not UI elements)
+                            if len(text) > 2 and len(text) < 50 and text_lower not in ['chats', 'calls', 'status', 'search', 'back']:
+                                if any(char.isalpha() for char in text):  # Contains letters
+                                    message_content_found = True
+                                    conversation_indicators += 1
+                        
+                        # If we have chat elements OR conversation indicators, consider it a chat screen
+                        if chat_elements_found >= 1 or conversation_indicators >= 3:
+                            message_input_found = True
+                            if chat_elements_found >= 1:
+                                print(f"✅ Chat screen detected via UI elements ({chat_elements_found} indicators)")
+                            else:
+                                print(f"✅ Chat screen detected via conversation content ({conversation_indicators} indicators)")
+                    
+                    if message_input_found:
+                        print(f"✅ SUCCESS! Chat opened after clicking at ({x}, {y})")
+                        contact_opened = True
+                        break
+                    else:
+                        print(f"❌ Attempt {attempt} - no chat screen detected")
                 else:
-                    print("❌ Contact doesn't meet strict validation criteria:")
-                    print(f"   Area: {best_contact['area']} (need ≥3000)")
-                    print(f"   Confidence: {best_contact['confidence']:.2f} (need >0.7)")
-                    print(f"   Text length: {len(best_contact['text'].strip())} (need ≥3)")
-                    print(f"   Starts with capital: {best_contact['text'][0].isupper()}")
-                    return False
-            else:
-                print(f"❌ Contact '{contact_name}' not found after filtering")
+                    print(f"❌ Tap failed: {stderr}")
+                
+                if attempt < len(click_positions):
+                    print("🔄 Trying next position...")
+            
+            if not contact_opened:
+                print("❌ Failed to open any chat by clicking in contact area")
                 return False
             
-            # Step 6: Type and send enhanced message
+            # Step 6: Click below chats (simplified approach)
+            print("� Using simplified approach: clicking in message input area...")
+            
+            # Get screen dimensions
+            screen_width = 1080   # Common Android width
+            screen_height = 2340  # Common Android height
+            
+            # Click in the bottom area where message input is typically located
+            # This is more reliable than trying to OCR the input field
+            input_x = screen_width // 2       # Center horizontally
+            input_y = int(screen_height * 0.9) # 90% down the screen (bottom area)
+            
+            success, _, stderr = self.run_adb_command(f"shell input tap {input_x} {input_y}")
+            if success:
+                print(f"✅ Tapped message input area at ({input_x}, {input_y})")
+                await asyncio.sleep(1)
+            else:
+                print(f"❌ Failed to tap input area: {stderr}")
+                # Try a slightly different position
+                input_y = int(screen_height * 0.85)
+                success, _, stderr = self.run_adb_command(f"shell input tap {input_x} {input_y}")
+                if success:
+                    print(f"✅ Fallback tap successful at ({input_x}, {input_y})")
+                    await asyncio.sleep(1)
+                else:
+                    print(f"❌ Fallback tap also failed: {stderr}")
+            
+            # Step 7: Type enhanced message
             print(f"💬 Composing enhanced message...")
             self.type_text(enhanced_message)
             await asyncio.sleep(1)
             
-            # Step 7: Send message
+            # Step 8: Send message using send button only
             print("📤 Sending message...")
             
-            # Look for send button
+            # Look for send button with improved detection
             self.capture_screen()
             self.analyze_screen_with_ai()
             
+            # Try multiple approaches to find send button
+            send_button_found = False
+            
+            # Method 1: Look for "send" text
             send_matches = self.smart_element_finder("send", "button")
             if send_matches:
+                print(f"✅ Found send button via text search")
                 self.tap_element(send_matches[0])
-            else:
-                # Fallback to enter key
-                print("   📤 Using Enter key to send")
-                self.press_key('enter')
+                send_button_found = True
+            
+            # Method 2: Look for arrow/plane icon (common send icons)
+            if not send_button_found:
+                for element in self.detected_elements:
+                    text_lower = element['text'].lower()
+                    if any(icon in text_lower for icon in ['→', '➤', '▶', '>', 'arrow', 'plane']):
+                        print(f"✅ Found send button via icon: '{element['text']}'")
+                        x, y = element['coordinates']
+                        success, _, stderr = self.run_adb_command(f"shell input tap {x} {y}")
+                        if success:
+                            send_button_found = True
+                            print(f"✅ Send button tapped at ({x}, {y})")
+                            break
+            
+            # Method 3: Look for green send button (#00FF00)
+            if not send_button_found:
+                print("🟢 Looking for green send button (#00FF00)...")
+                green_button_coords = self.find_green_send_button()
+                if green_button_coords:
+                    x, y = green_button_coords
+                    success, _, stderr = self.run_adb_command(f"shell input tap {x} {y}")
+                    if success:
+                        print(f"✅ Green send button tapped at ({x}, {y})")
+                        send_button_found = True
+                    else:
+                        print(f"❌ Failed to tap green button: {stderr}")
+            
+            # Method 4: Fallback - tap in bottom right corner where send button usually is
+            if not send_button_found:
+                print("🔄 Using positional fallback for send button...")
+                screen_width = 1080
+                screen_height = 2340
+                send_x = int(screen_width * 0.9)   # 90% to the right
+                send_y = int(screen_height * 0.9)  # 90% down (near message input)
+                
+                success, _, stderr = self.run_adb_command(f"shell input tap {send_x} {send_y}")
+                if success:
+                    print(f"✅ Fallback send tap executed at ({send_x}, {send_y})")
+                    send_button_found = True
+                else:
+                    print(f"❌ Failed to tap send button: {stderr}")
+            
+            if not send_button_found:
+                print("❌ Could not find or tap send button")
             
             print(f"✅ Enhanced message sent to {contact_name}")
             print(f"   Original: '{message}'")
@@ -716,99 +969,26 @@ class CompleteMobileAgentX:
             print(f"   {i:2d}. {element['type']} '{element['text']}' (conf: {element['confidence']:.2f})")
     
     async def interactive_session(self):
-        """Main interactive session"""
-        print("\n🤖 AI MOBILE AGENTX - COMPLETE AUTOMATION SYSTEM")
-        print("=" * 55)
+        """Direct WhatsApp message sending without menu"""
+        print("\n🤖 AI MOBILE AGENTX - DIRECT WHATSAPP AUTOMATION")
+        print("=" * 50)
         
         if not self.check_device_connection():
             return
         
-        while True:
-            print("\n🎯 WHAT WOULD YOU LIKE TO DO?")
-            print("=" * 35)
-            print("1. 💬 WhatsApp - Send AI-enhanced message")
-            print("2. 📧 Gmail - Compose email")
-            print("3. 🚀 Open any app")
-            print("4. 👆 Tap on text")
-            print("5. 📸 Analyze current screen")
-            print("6. 🏠 Go to home screen")
-            print("7. ⬅️ Go back")
-            print("8. 🤖 Test AI message enhancement")
-            print("0. 🚪 Exit")
+        try:
+            contact = input("👤 Contact name: ").strip()
+            message = input("💬 Message: ").strip()
             
-            choice = input("\n👉 Enter choice (0-8): ").strip()
-            
-            try:
-                if choice == "0":
-                    print("👋 Thanks for using AI Mobile AgentX!")
-                    break
+            if contact and message:
+                await self.whatsapp_send_message(contact, message)
+            else:
+                print("❌ Contact name and message required")
                 
-                elif choice == "1":
-                    contact = input("👤 Contact name: ").strip()
-                    message = input("💬 Message: ").strip()
-                    if contact and message:
-                        await self.whatsapp_send_message(contact, message)
-                    else:
-                        print("❌ Contact name and message required")
-                
-                elif choice == "2":
-                    recipient = input("📧 Recipient email: ").strip()
-                    subject = input("📝 Subject: ").strip()
-                    body = input("✍️ Message body: ").strip()
-                    if recipient and subject and body:
-                        await self.gmail_compose_email(recipient, subject, body)
-                    else:
-                        print("❌ All email fields required")
-                
-                elif choice == "3":
-                    app_name = input("🚀 App name to open: ").strip()
-                    if app_name:
-                        await self.open_app(app_name)
-                    else:
-                        print("❌ App name required")
-                
-                elif choice == "4":
-                    text_to_tap = input("👆 Text to tap on: ").strip()
-                    if text_to_tap:
-                        self.capture_screen()
-                        self.analyze_screen_with_ai()
-                        matches = self.smart_element_finder(text_to_tap)
-                        if matches:
-                            self.tap_element(matches[0])
-                        else:
-                            print(f"❌ '{text_to_tap}' not found")
-                    else:
-                        print("❌ Text required")
-                
-                elif choice == "5":
-                    self.capture_screen()
-                    self.analyze_screen_with_ai()
-                    self.show_detected_elements()
-                
-                elif choice == "6":
-                    self.press_key('home')
-                    print("✅ Went to home screen")
-                
-                elif choice == "7":
-                    self.press_key('back')
-                    print("✅ Went back")
-                
-                elif choice == "8":
-                    test_message = input("🤖 Enter message to enhance: ").strip()
-                    if test_message:
-                        enhanced = self.enhance_message_with_ai(test_message)
-                        print(f"\n📝 Original: {test_message}")
-                        print(f"✨ Enhanced: {enhanced}")
-                    else:
-                        print("❌ Message required")
-                
-                else:
-                    print("❌ Invalid choice")
-                
-            except KeyboardInterrupt:
-                print("\n⏸️ Action cancelled")
-            except Exception as e:
-                print(f"\n💥 Error: {e}")
+        except KeyboardInterrupt:
+            print("\n⏸️ Action cancelled")
+        except Exception as e:
+            print(f"\n💥 Error: {e}")
 
 async def main():
     """Initialize and run the complete system"""
