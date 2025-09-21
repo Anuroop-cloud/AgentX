@@ -161,13 +161,21 @@ class CompleteMobileAgentX:
             img_rgb = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
             img_hsv = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2HSV)
             
-            # Define green color range for #00FF00 (pure green)
-            # HSV values for bright green
-            lower_green = np.array([50, 100, 100])   # Lower bound
-            upper_green = np.array([80, 255, 255])   # Upper bound
+            # Define green color ranges for WhatsApp send button (multiple shades)
+            # WhatsApp uses different greens: #25D366 (WhatsApp green), #00FF00 (bright green)
             
-            # Create mask for green colors
-            green_mask = cv2.inRange(img_hsv, lower_green, upper_green)
+            # Range 1: WhatsApp green (#25D366) - Hue around 140-160 in HSV
+            lower_green1 = np.array([40, 100, 50])    # WhatsApp green range
+            upper_green1 = np.array([80, 255, 255])
+            
+            # Range 2: Bright green (#00FF00) - Pure green
+            lower_green2 = np.array([50, 200, 200])   # Bright green
+            upper_green2 = np.array([70, 255, 255])
+            
+            # Create masks for both green ranges
+            green_mask1 = cv2.inRange(img_hsv, lower_green1, upper_green1)
+            green_mask2 = cv2.inRange(img_hsv, lower_green2, upper_green2)
+            green_mask = cv2.bitwise_or(green_mask1, green_mask2)
             
             # Find contours of green regions
             contours, _ = cv2.findContours(green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -774,18 +782,32 @@ class CompleteMobileAgentX:
                 self.tap_element(send_matches[0])
                 send_button_found = True
             
-            # Method 2: Look for arrow/plane icon (common send icons)
+            # Method 2: Look for arrow/plane icon (common send icons) with better filtering
             if not send_button_found:
+                screen_height = self.current_screenshot.size[1]
+                screen_width = self.current_screenshot.size[0]
+                
                 for element in self.detected_elements:
-                    text_lower = element['text'].lower()
-                    if any(icon in text_lower for icon in ['→', '➤', '▶', '>', 'arrow', 'plane']):
-                        print(f"✅ Found send button via icon: '{element['text']}'")
+                    try:
+                        if 'coordinates' not in element:
+                            continue
+                        text_lower = element['text'].lower()
                         x, y = element['coordinates']
-                        success, _, stderr = self.run_adb_command(f"shell input tap {x} {y}")
-                        if success:
-                            send_button_found = True
-                            print(f"✅ Send button tapped at ({x}, {y})")
-                            break
+                        
+                        # Only consider elements in the bottom-right quadrant for send buttons
+                        if x > screen_width * 0.6 and y > screen_height * 0.7:
+                            if any(icon in text_lower for icon in ['→', '➤', '▶', '>', 'arrow', 'plane', 'send']):
+                                print(f"✅ Found send button via icon: '{element['text']}' at ({x}, {y})")
+                                success, _, stderr = self.run_adb_command(f"shell input tap {x} {y}")
+                                if success:
+                                    send_button_found = True
+                                    print(f"✅ Send button tapped successfully")
+                                    break
+                                else:
+                                    print(f"⚠️ Icon tap failed, trying next: {stderr}")
+                    except Exception as e:
+                        print(f"⚠️ Error processing icon element: {e}")
+                        continue
             
             # Method 3: Look for green send button (#00FF00)
             if not send_button_found:
@@ -800,20 +822,71 @@ class CompleteMobileAgentX:
                     else:
                         print(f"❌ Failed to tap green button: {stderr}")
             
-            # Method 4: Fallback - tap in bottom right corner where send button usually is
+            # Method 4: Improved send button detection using text analysis
             if not send_button_found:
-                print("🔄 Using positional fallback for send button...")
+                print("🔍 Advanced send button detection...")
+                
+                # Look for any elements that might be send-related
+                send_candidates = []
+                for element in self.detected_elements:
+                    try:
+                        if 'coordinates' not in element:
+                            continue
+                        x, y = element['coordinates']
+                        text = element['text'].lower()
+                        screen_height = self.current_screenshot.size[1]
+                        
+                        # Check if element is in bottom area and could be send button
+                        if y > screen_height * 0.7:  # Bottom 30% of screen
+                            # Look for send indicators (including icons, arrows, etc.)
+                            if any(indicator in text for indicator in ['send', '>', '→', '▶', 'submit', 'ok']):
+                                send_candidates.append((x, y, element['text'], 'text_match'))
+                            # Also consider very small/minimal text that could be icons
+                            elif len(text.strip()) <= 2 and text.strip() != '':
+                                send_candidates.append((x, y, element['text'], 'possible_icon'))
+                    except Exception as e:
+                        print(f"⚠️ Error processing element: {e}")
+                        continue
+                
+                # Sort candidates by position (rightmost in bottom area preferred)
+                if send_candidates:
+                    send_candidates.sort(key=lambda c: (c[1], c[0]), reverse=True)  # Bottom-most, then rightmost
+                    
+                    for candidate in send_candidates[:3]:  # Try top 3 candidates
+                        x, y, text, reason = candidate
+                        print(f"🎯 Trying send candidate: '{text}' at ({x}, {y}) - {reason}")
+                        
+                        success, _, stderr = self.run_adb_command(f"shell input tap {x} {y}")
+                        if success:
+                            print(f"✅ Send button tapped at ({x}, {y})")
+                            send_button_found = True
+                            break
+                        else:
+                            print(f"❌ Tap failed: {stderr}")
+            
+            # Method 5: More precise positional fallback (avoid backspace area)
+            if not send_button_found:
+                print("🔄 Using precise positional fallback...")
                 screen_width = 1080
                 screen_height = 2340
-                send_x = int(screen_width * 0.9)   # 90% to the right
-                send_y = int(screen_height * 0.9)  # 90% down (near message input)
                 
-                success, _, stderr = self.run_adb_command(f"shell input tap {send_x} {send_y}")
-                if success:
-                    print(f"✅ Fallback send tap executed at ({send_x}, {send_y})")
-                    send_button_found = True
-                else:
-                    print(f"❌ Failed to tap send button: {stderr}")
+                # Try multiple positions in the send button area (avoid far right where backspace might be)
+                send_positions = [
+                    (int(screen_width * 0.85), int(screen_height * 0.88)),  # Slightly left and up from previous
+                    (int(screen_width * 0.82), int(screen_height * 0.90)),  # More to the left
+                    (int(screen_width * 0.88), int(screen_height * 0.85)),  # Higher up
+                ]
+                
+                for i, (send_x, send_y) in enumerate(send_positions):
+                    print(f"   🎯 Trying position {i+1}: ({send_x}, {send_y})")
+                    success, _, stderr = self.run_adb_command(f"shell input tap {send_x} {send_y}")
+                    if success:
+                        print(f"✅ Fallback send tap executed at ({send_x}, {send_y})")
+                        send_button_found = True
+                        break
+                    else:
+                        print(f"❌ Position {i+1} failed: {stderr}")
+                        await asyncio.sleep(0.5)  # Brief pause between attempts
             
             if not send_button_found:
                 print("❌ Could not find or tap send button")
