@@ -54,7 +54,7 @@ class CompleteMobileAgentX:
             print("🔄 Initializing Gemini AI for message enhancement...")
             try:
                 # Use provided API key
-                api_key = "AIzaSyBJEa2zvaScpco-WQ7z9NSv__-shLIkekU"
+                api_key = "AIzaSyD9fBfD4xbY5LnBFHBFr9aR27WdaU7xd6g"
                 genai.configure(api_key=api_key)
                 self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
                 print("✅ Gemini AI ready - Message enhancement active")
