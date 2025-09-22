@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
+  // Primary Colors - Modern purple/blue theme
   static const Color primaryColor = Color(0xFF6C5CE7);
   static const Color secondaryColor = Color(0xFFA29BFE);
   static const Color accentColor = Color(0xFF74B9FF);
@@ -9,8 +10,23 @@ class AppTheme {
   static const Color surfaceColor = Color(0xFF1E2139);
   static const Color cardColor = Color(0xFF2D3161);
   
+  // Gradient Colors for See-through Effect
+  static const Color backgroundGradientStart = Color(0xFF0B0E17);
+  static const Color backgroundGradientMiddle = Color(0xFF1E2139);
+  static const Color backgroundGradientEnd = Color(0xFF2D3161);
+  
+  // Glass morphism colors
+  static const Color glassLight = Colors.white;
+  static const Color glassDark = Colors.black;
+  
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [primaryColor, secondaryColor],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  
+  static const LinearGradient accentGradient = LinearGradient(
+    colors: [accentColor, Color(0xFF00B894)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
@@ -19,11 +35,35 @@ class AppTheme {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF0B0E17),
-      Color(0xFF1E2139),
-      Color(0xFF2D3161),
+      backgroundGradientStart,
+      backgroundGradientMiddle,
+      backgroundGradientEnd,
     ],
   );
+
+  // Glass morphism gradients
+  static LinearGradient glassmorphismGradient({double opacity = 0.1}) {
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white.withOpacity(opacity),
+        Colors.white.withOpacity(opacity * 0.5),
+      ],
+      stops: const [0.1, 1.0],
+    );
+  }
+
+  static LinearGradient glassmorphismBorderGradient({double opacity = 0.3}) {
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white.withOpacity(opacity),
+        Colors.white.withOpacity(opacity * 0.5),
+      ],
+    );
+  }
 
   static ThemeData get lightTheme {
     return ThemeData(

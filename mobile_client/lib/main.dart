@@ -3,11 +3,19 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'screens/home_screen.dart';
+import 'screens/launcher_screen.dart';
 import 'services/agentx_service.dart';
 import 'theme/app_theme.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Set preferred orientations
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+  
   runApp(const AgentXApp());
 }
 
@@ -30,12 +38,12 @@ class AgentXApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AgentXService()),
       ],
       child: MaterialApp(
-        title: 'AgentX',
+        title: 'AgentX - AI Mobile Assistant',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
         themeMode: ThemeMode.dark,
-        home: const HomeScreen(),
+        home: const LauncherScreen(),
       ).animate().fadeIn(duration: 800.ms),
     );
   }
