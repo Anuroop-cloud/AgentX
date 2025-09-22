@@ -1,0 +1,215 @@
+You are being handed the AgentX repo (https://github.com/Anuroop-cloud/AgentX). From this point onward you will **build the project end-to-end** into an MCP-first, mobile-ready MVP. Do not ask for additional clarification — proceed with best-practice architectural and engineering decisions, and produce code, tests, docs, and runnable deployment artifacts. Prioritize correctness, reproducibility, and demoability.
+
+GOAL (MVP)
+- Deliver an MCP-based AgentX with:
+  1. Core Orchestrator (service discovery, tool registry, routing, workflow execution).
+  2. MCP template (base service implementation).
+  3. WhatsApp MCP (read_chats, draft_message, send_message) — stubbed where official API not available.
+  4. Gmail MCP (read_inbox, draft_email, send_email) — implement with Google OAuth2 and Gmail API (or a local stub if credentials unavailable).
+  5. Calendar MCP (list_events, create_event, find_availability) — implement with Google Calendar OAuth2 and API (or local sqlite fallback).
+  6. Time MCP (current_time, parse_natural_time) — lightweight utility service.
+  7. Mobile integration guide + minimal Flutter client that can call orchestrator endpoints and show results.
+  8. CI + Docker Compose to run a full local demo (orchestrator + MCPs + API gateway).
+  9. Automated tests for discovery, tool invocation, and 3 end-to-end demo workflows.
+
+ASSUMPTIONS / TECH STACK
+- Language: Python 3.11+ for all MCPs and orchestrator.
+- Web framework: FastAPI (pydantic for schemas).
+- HTTP server: uvicorn for local dev.
+- Tool matching / orchestration: orchestrator uses structured JSON calls (MCP spec: list_tools + invoke_tool).
+- Data storage: SQLite for small state (bookings, tokens) with a migration-ready approach (use SQLModel or SQLAlchemy).
+- Auth: OAuth2 for Gmail & Calendar (store refresh tokens encrypted in sqlite; use local dev redirect with instructions).
+- Containerization: Docker + Docker Compose for running orchestrator + MCPs.
+- Mobile: Flutter minimal client that calls orchestrator via REST (no full UI polish required — a working proof-of-concept).
+- Testing: pytest for unit tests and simple integration tests using requests or httpx.
+
+REPO LAYOUT (create / modify)
+- /mcps/
+  - /base_mcp/ (template)
+    - main.py
+    - schemas.py
+    - README.md
+    - requirements.txt
+    - Dockerfile
+  - /whatsapp_mcp/
+    - main.py
+    - schemas.py
+    - whatsapp_adapter.py (stubs/mock + optional real adapters)
+    - requirements.txt
+    - Dockerfile
+  - /gmail_mcp/
+    - main.py
+    - schemas.py
+    - google_oauth.py
+    - requirements.txt
+    - Dockerfile
+  - /calendar_mcp/
+    - main.py
+    - schemas.py
+    - google_oauth.py
+    - requirements.txt
+    - Dockerfile
+  - /time_mcp/
+    - main.py
+    - schemas.py
+    - requirements.txt
+    - Dockerfile
+- /orchestrator/
+  - main.py (orchestrator service)
+  - service_registry.py (in-memory + JSON file + optional persistence)
+  - invoker.py (invoke_tool semantics + schema validation)
+  - workflows.py (pre-built demo workflows + engine)
+  - schemas.py
+  - requirements.txt
+  - Dockerfile
+- /mobile_client/
+  - flutter minimal app
+  - README.md
+- docker-compose.yml (run orchestrator + all MCPs)
+- /tests/
+  - test_service_discovery.py
+  - test_tool_invocation.py
+  - test_end_to_end_demo.py
+- README_ROOT.md (how to run local demo, how to add MCP)
+- /scripts/
+  - setup_local_oauth.sh (instructions + helper script)
+  - reset_db.py
+
+MCP SPEC (endpoints each MCP must expose)
+- GET  /mcp/tools
+  - returns list of tools with metadata:
+    `[ { "tool_id": "whatsapp.read_chats", "description": "...", "input_schema": {...}, "output_schema": {...} } ]`
+- POST /mcp/invoke
+  - body: `{ "tool_id": "whatsapp.send_message", "inputs": { ... }, "request_id": "optional-uuid" }`
+  - returns: `{ "status": "ok"|"error", "result": {...}, "error": {...} }`
+- GET  /health
+  - returns `{ "status":"ok", "uptime": seconds }`
+
+DATA MODELS / EXAMPLE TOOL SCHEMAS (pydantic)
+- whatsapp.read_chats.inputs:
+  - `{"limit": int, "since": optional ISO timestamp, "chat_id": optional string}`
+- whatsapp.read_chats.output:
+  - `{ "chats": [ {"chat_id": str, "display_name": str, "messages": [ { "id": str, "from": str, "text": str, "ts": ISO } ] } ] }`
+- whatsapp.draft_message.inputs:
+  - `{"chat_id": str, "prompt": str}` → returns drafted text
+- whatsapp.send_message.inputs:
+  - `{"chat_id": str, "message": str}`
+- gmail.read_inbox.inputs:
+  - `{"label": "INBOX", "unread_only": bool, "limit": int}`
+- gmail.read_inbox.output:
+  - `{"emails":[ {"id": str, "from": str, "subject": str, "snippet": str, "ts": ISO} ]}`
+- gmail.draft_email.inputs:
+  - `{"to": [str], "subject": str, "prompt": str}`
+- calendar.list_events.inputs:
+  - `{"start": ISO, "end": ISO}`
+- calendar.create_event.inputs:
+  - `{"title": str, "start": ISO, "end": ISO, "attendees": [str], "description": str}`
+
+IMPLEMENTATION STEPS (priority + deliverables)
+1. **Base MCP template**  
+   - Implement `/mcp/tools`, `/mcp/invoke`, `/health`.  
+   - Include pydantic schema loader and automatic OpenAPI docs.  
+   - Output: runnable container `mcps/base_mcp` and README showing how to copy template to new MCP.
+
+2. **Orchestrator core**  
+   - Implement service registry:
+     - Services POST to `/orchestrator/register` with `{url, name, tools[]}` on startup OR orchestrator polls a configured list. Provide both options.
+     - Registry stores metadata (url, tools, health, last_seen).
+   - Implement `/orchestrator/tools` endpoint that aggregates tools from registry.
+   - Implement `/orchestrator/invoke` that:
+     - Accepts `{ tool_id, inputs }`
+     - Finds responsible service
+     - Validates `inputs` against tool's input schema (pydantic)
+     - Forwards request to that MCP `/mcp/invoke`
+     - Returns response to client, logs request (with request_id)
+   - Implement `invoker.py` with retries, timeouts, fallback rules.
+   - Output: orchestrator service with API doc + docker image.
+
+3. **Time MCP** (quick)  
+   - Implement current time & natural language parsing (use `dateparser` or `parsedatetime`).
+   - Add tests.
+
+4. **WhatsApp MCP**  
+   - Implement 2 modes:
+     - **Stub mode**: local sqlite-based messages + deterministic responses for demo.
+     - **Adapter mode**: (optional) instructions and code hooks to integrate with Twilio/WhatsApp Business API or other bridges; but do not block deliverable on real integration.
+   - Implement read/draft/send tools with schema and tests.
+   - Ensure message sending writes to sqlite and returns message id.
+
+5. **Gmail MCP**  
+   - Implement local stub (sqlite) that simulates emails for demo.  
+   - Also implement a `google_oauth.py` helper that can be used to wire real Gmail API with instructions for developers (client_id/client_secret steps), but the MVP must run with stub data without requiring developer Google credentials.
+   - Implement read/draft/send endpoints and tests.
+
+6. **Calendar MCP**  
+   - Implement local calendar store (sqlite) and simple availability-finding algorithm.
+   - Implement list_events/create_event/find_availability.
+   - Provide `google_oauth.py` helper and instructions for wiring real Google Calendar later.
+   - Tests for scheduling/rescheduling flows.
+
+7. **Workflows in orchestrator**  
+   - Implement `workflows.py` with pre-built workflow handlers:
+     - `message_and_reschedule` (example: send WhatsApp message AND reschedule a calendar event).
+     - `summarize_and_email` (read whatsapp/gmail messages, summarize with LLM, draft & send email).
+   - Workflows use orchestrator to call multiple MCPs and handle compensation & rollback semantics (if scheduling fails after message, log and notify).
+
+8. **Mobile client (Flutter)**  
+   - Minimal app: authenticate user (if needed), shows list of tools from orchestrator, a simple chat-like UI to run workflows and show logs.
+   - Buttons for demo flows: "Notify DevJams I'm late + Reschedule Rishi".
+   - Show raw JSON request/response for transparency.
+
+9. **Docker Compose + demo script**  
+   - Compose runs orchestrator + time_mcp + whatsapp_mcp + gmail_mcp + calendar_mcp + (optionally) API gateway/proxy.  
+   - Add `run_demo.sh` that:
+     - Boots services
+     - Seeds demo data (sample messages, emails, calendar events)
+     - Calls orchestrator demo endpoints to run the 3 demo workflows and saves logs.
+
+10. **Tests & CI**  
+    - Add pytest tests for discovery, invoke, stub MCP behavior.
+    - Include a GitHub Actions workflow that:
+      - Builds Docker images
+      - Runs unit tests
+      - Runs a basic integration test (start services via docker-compose, run one workflow, validate results).
+
+11. **Docs**  
+    - Root README: architecture diagram (ASCII or simple SVG), how to run, how to add a new MCP.
+    - Each MCP README: endpoints, schemas, how to run, how to wire real APIs (Gmail/Twilio/Google Calendar).
+    - Demo script / checklist for hackathon presentation.
+
+SECURITY & PERMISSIONS
+- For real integrations (Gmail/Calendar), implement OAuth2 and a permission approval flow (user must explicitly consent per service). Store tokens in sqlite and encrypt them using a symmetric key loaded from env var `SECRET_KEY`.
+- Add a simple permission manager in orchestrator where user must approve MCP capabilities before orchestrator invokes them on behalf of the user. Default demo: auto-approve stubs.
+
+ERROR HANDLING & OBSERVABILITY
+- All MCPs should return structured errors `{code, message, details}`.
+- Orchestrator logs all calls (request_id, tool_id, inputs, service_url, response time, status) into a local log file and a `/orchestrator/logs` endpoint for UI.
+- Add health-check dashboard in orchestrator to list services and health status.
+
+DELIVERABLES (by priority)
+1. Base MCP template + Time MCP + orchestrator core + docker-compose (must be runnable locally).
+2. WhatsApp MCP (stub), Gmail MCP (stub), Calendar MCP (stub) + sample workflows.
+3. Mobile Flutter client with buttons to run demo workflows.
+4. Tests, CI, and docs.
+5. Optional: adapter examples for Twilio/WhatsApp Business & Google APIs plus OAuth helper scripts.
+
+DEVELOPMENT BEHAVIOR
+- For any step requiring secrets (Google OAuth client_id/secret), create a local-stub fallback and produce detailed instructions for how to wire real credentials later — do not block deliverables on external credentials.
+- Produce runnable code with minimal manual steps: `docker-compose up --build`, `python scripts/seed_demo.py`, then call `/orchestrator/run_demo_workflow`.
+- Use clear, consistent logging and keep each service’s OpenAPI docs available at `/docs`.
+
+TEST WORKFLOWS (examples to implement & validate)
+1. `notify_devjams_and_reschedule`:
+   - Inputs: `{ "contact":"DevJams", "message":"I'll be late", "event_to_reschedule":"Rishi meeting", "new_time": "tomorrow 4pm" }`
+   - Steps: whatsapp.send_message -> calendar.find_event -> calendar.create_event (or update) -> confirm.
+2. `summarize_unread_whatsapp_and_email`:
+   - Read unread from whatsapp & gmail -> call LLM summarization (LLM call can be a stub) -> draft email -> send.
+3. `book_cab_stub`:
+   - Demonstrates how to plug in future Cab MCP.
+
+FINAL NOTES
+- Provide all code with clear function-level comments.
+- Add a short developer checklist in README: how to add a new MCP service (copy base template, implement tools, register with orchestrator).
+- Make outputs deterministic in stubs so CI tests pass reliably.
+
+Now: start implementing the above. For each file you create, return the full file contents. For each service, include a `README.md` with instructions. After finishing the first runnable unit (base_mcp + orchestrator + time_mcp + docker-compose), run the basic demo workflow and provide the demo output (logs + HTTP responses). Iterate until all prioritized deliverables are complete.
