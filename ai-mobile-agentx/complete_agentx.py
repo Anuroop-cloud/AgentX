@@ -10,6 +10,7 @@ All automation features combined with AI intelligence
 import subprocess
 import asyncio
 import os
+import sys
 import time
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
@@ -18,25 +19,77 @@ import numpy as np
 import json
 import requests
 
+# Optional dependencies with better error handling
+EASYOCR_AVAILABLE = False
+GEMINI_AVAILABLE = False
+OCR_IMPORT_ERROR = None
+GEMINI_IMPORT_ERROR = None
+
 try:
     import easyocr
     EASYOCR_AVAILABLE = True
-except ImportError:
-    EASYOCR_AVAILABLE = False
+except ImportError as e:
+    OCR_IMPORT_ERROR = str(e)
+    print(f"⚠️ easyocr import failed: {e}")
+    print("💡 To enable OCR features, install easyocr: pip install easyocr")
 
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
+except ImportError as e:
+    GEMINI_IMPORT_ERROR = str(e)
+    print(f"⚠️ google-generativeai import failed: {e}")
+    print("💡 To enable AI features, install google-generativeai: pip install google-generativeai")
 
 class CompleteMobileAgentX:
     def __init__(self):
-        self.adb_path = os.path.join(os.environ['LOCALAPPDATA'], 'Android', 'Sdk', 'platform-tools', 'adb.exe')
+        # OS-agnostic ADB path detection
+        self.adb_path = self._get_adb_path()
         self.device_connected = False
         self.current_screenshot = None
         self.detected_elements = []
         self.gemini_model = None
+
+    def _get_adb_path(self):
+        """Get ADB path in an OS-agnostic way"""
+        # Common ADB paths for different operating systems
+        paths = {
+            'linux': [
+                '/usr/bin/adb',  # Standard Linux path
+                '/usr/local/bin/adb',  # Local install
+                os.path.expanduser('~/Android/Sdk/platform-tools/adb'),  # User's home Android SDK
+                '/opt/android-sdk/platform-tools/adb'  # Optional Android SDK location
+            ],
+            'darwin': [
+                '/usr/local/bin/adb',
+                os.path.expanduser('~/Library/Android/sdk/platform-tools/adb')
+            ],
+            'win32': [
+                os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Android', 'Sdk', 'platform-tools', 'adb.exe'),
+                os.path.join(os.environ.get('PROGRAMFILES', ''), 'Android', 'android-sdk', 'platform-tools', 'adb.exe'),
+                'C:\\android-tools\\platform-tools\\adb.exe'
+            ]
+        }
+
+        # Get current OS
+        current_os = sys.platform
+
+        # Check all possible paths for current OS
+        if current_os in paths:
+            for path in paths[current_os]:
+                if os.path.isfile(path):
+                    print(f"✅ Found ADB at: {path}")
+                    return path
+
+        # If ADB is in system PATH
+        import shutil
+        adb_in_path = shutil.which('adb')
+        if adb_in_path:
+            print(f"✅ Found ADB in PATH: {adb_in_path}")
+            return adb_in_path
+
+        print("⚠️ ADB not found in common locations. Please ensure Android SDK platform-tools are installed.")
+        return 'adb'  # Fallback to just 'adb', assuming it might be in PATH
         
         print("🤖 AI Mobile AgentX - Complete System Loading...")
         
@@ -68,10 +121,18 @@ class CompleteMobileAgentX:
     def run_adb_command(self, command):
         """Execute ADB command with error handling"""
         try:
-            # Use full path to ADB to avoid PATH issues
-            adb_path = r"C:\android-tools\platform-tools\adb.exe"
-            full_command = f"{adb_path} {command}"
-            result = subprocess.run(full_command.split(), capture_output=True, text=True, timeout=30)
+            # Use instance adb_path which is already OS-agnostic
+            full_command = f"{self.adb_path} {command}"
+            
+            if sys.platform == 'win32':
+                # On Windows, we need to split the command differently
+                import shlex
+                cmd_parts = shlex.split(full_command, posix=False)
+            else:
+                # On Unix-like systems, regular split works fine
+                cmd_parts = full_command.split()
+            
+            result = subprocess.run(cmd_parts, capture_output=True, text=True, timeout=30)
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
             return False, "", "Command timed out"
@@ -81,8 +142,23 @@ class CompleteMobileAgentX:
     def check_device_connection(self):
         """Check and establish device connection"""
         print("📱 Checking device connection...")
+
+        # First, check if ADB server is running
+        success, stdout, stderr = self.run_adb_command("start-server")
+        if not success:
+            print(f"❌ Failed to start ADB server: {stderr}")
+            if sys.platform == 'linux':
+                print("\n🔧 Linux Setup Tips:")
+                print("   1. Ensure adb is installed: sudo dnf install android-tools (Fedora)")
+                print("   2. Add udev rules for Android devices:")
+                print("      sudo wget https://raw.githubusercontent.com/M0Rf30/android-udev-rules/master/51-android.rules -O /etc/udev/rules.d/51-android.rules")
+                print("      sudo udevadm control --reload-rules")
+                print("   3. Add your user to plugdev group: sudo usermod -aG plugdev $USER")
+                print("   4. Restart udev: sudo service udev restart")
+            return False
+
+        # Check connected devices
         success, stdout, stderr = self.run_adb_command("devices")
-        
         if not success:
             print(f"❌ ADB error: {stderr}")
             return False
@@ -92,10 +168,18 @@ class CompleteMobileAgentX:
         
         if not connected_devices:
             print("❌ No devices connected")
-            print("\n🔧 Setup Instructions:")
+            print("\n🔧 General Setup Instructions:")
             print("   1. Enable Developer Options: Settings → About Phone → Tap 'Build Number' 7 times")
             print("   2. Enable USB Debugging: Settings → Developer Options → USB Debugging")
             print("   3. Connect device via USB and allow debugging")
+            
+            # Linux-specific USB debugging tips
+            if sys.platform == 'linux':
+                print("\n🐧 Linux-specific tips:")
+                print("   • Run 'lsusb' to verify device is detected")
+                print("   • Check 'dmesg' for USB connection issues")
+                print("   • Try different USB ports and cables")
+                print("   • Ensure device is in File Transfer (MTP) mode")
             return False
         
         device_id = connected_devices[0].split()[0]
