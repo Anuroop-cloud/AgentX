@@ -1,20 +1,23 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import '../models/mcp_tool.dart';
-import '../models/conversation.dart';
+import '../models/agent.dart';
+import '../models/chat_message.dart';
+import '../models/automation_task.dart';
 
 class AgentXService extends ChangeNotifier {
   static const String baseUrl = 'http://0.0.0.0:5000';
   
-  List<MCPTool> _tools = [];
-  List<Conversation> _conversations = [];
+  List<Agent> _agents = [];
+  List<ChatMessage> _messages = [];
+  List<AutomationTask> _tasks = [];
   bool _isLoading = false;
   String? _error;
   bool _isConnected = false;
 
-  List<MCPTool> get tools => _tools;
-  List<Conversation> get conversations => _conversations;
+  List<Agent> get agents => _agents;
+  List<ChatMessage> get messages => _messages;
+  List<AutomationTask> get tasks => _tasks;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isConnected => _isConnected;
