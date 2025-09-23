@@ -161,7 +161,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: GlassmorphicContainer(
                     width: double.infinity,
-                    height: null,
+                    height: 200,
                     borderRadius: 20,
                     blur: 20,
                     alignment: Alignment.bottomCenter,

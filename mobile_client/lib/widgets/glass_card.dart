@@ -25,7 +25,7 @@ class GlassCard extends StatelessWidget {
       onTap: onTap,
       child: GlassmorphicContainer(
         width: double.infinity,
-        height: null,
+        height: 120,
         borderRadius: borderRadius?.resolve(TextDirection.ltr)?.topLeft.x ?? 16,
         blur: blur ?? 20,
         alignment: Alignment.bottomCenter,

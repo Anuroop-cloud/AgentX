@@ -115,7 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: GlassmorphicContainer(
                     width: double.infinity,
-                    height: null,
+                    height: 280,
                     borderRadius: 20,
                     blur: 20,
                     alignment: Alignment.bottomCenter,

@@ -87,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Login form
                 GlassmorphicContainer(
                   width: double.infinity,
-                  height: null,
+                  height: 400,
                   borderRadius: 20,
                   blur: 20,
                   alignment: Alignment.bottomCenter,

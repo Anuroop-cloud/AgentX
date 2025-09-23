@@ -12,6 +12,23 @@ class MessageBubble extends StatelessWidget {
     required this.message,
   });
 
+  double _calculateBubbleHeight(String text) {
+    // Base height for padding and minimum content
+    double baseHeight = 56.0;
+    
+    // Calculate additional height based on text length
+    int lineCount = (text.length / 40).ceil();
+    if (lineCount > 1) {
+      baseHeight += (lineCount - 1) * 20.0;
+    }
+    
+    // Account for line breaks in text
+    int actualLineBreaks = '\n'.allMatches(text).length;
+    baseHeight += actualLineBreaks * 20.0;
+    
+    return baseHeight.clamp(56.0, 200.0); // Min 56, Max 200
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -48,8 +65,8 @@ class MessageBubble extends StatelessWidget {
                 : CrossAxisAlignment.start,
             children: [
               GlassmorphicContainer(
-                width: null,
-                height: null,
+                width: MediaQuery.of(context).size.width * 0.75,
+                height: _calculateBubbleHeight(message.text),
                 borderRadius: 20,
                 blur: 20,
                 alignment: Alignment.centerLeft,

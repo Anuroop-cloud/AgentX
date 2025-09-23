@@ -11,6 +11,23 @@ class ConversationBubble extends StatelessWidget {
     required this.conversation,
   });
 
+  double _calculateBubbleHeight(String message) {
+    // Base height for padding and minimum content
+    double baseHeight = 60.0;
+    
+    // Calculate additional height based on text length
+    int lineCount = (message.length / 35).ceil();
+    if (lineCount > 1) {
+      baseHeight += (lineCount - 1) * 20.0;
+    }
+    
+    // Account for line breaks in text
+    int actualLineBreaks = '\n'.allMatches(message).length;
+    baseHeight += actualLineBreaks * 20.0;
+    
+    return baseHeight.clamp(60.0, 200.0); // Min 60, Max 200
+  }
+
   @override
   Widget build(BuildContext context) {
     final isUser = conversation.sender == 'user';
@@ -29,8 +46,8 @@ class ConversationBubble extends StatelessWidget {
                 maxWidth: MediaQuery.of(context).size.width * 0.75,
               ),
               child: GlassmorphicContainer(
-                width: null,
-                height: null,
+                width: MediaQuery.of(context).size.width * 0.75,
+                height: _calculateBubbleHeight(conversation.message),
                 borderRadius: isUser ? 20 : 20,
                 blur: 15,
                 alignment: Alignment.center,

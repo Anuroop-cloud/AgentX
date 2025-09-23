@@ -44,7 +44,7 @@ class GlassTextField extends StatelessWidget {
         const SizedBox(height: 8),
         GlassmorphicContainer(
           width: double.infinity,
-          height: maxLines > 1 ? null : 56,
+          height: maxLines > 1 ? (maxLines * 24.0 + 32) : 56,
           borderRadius: 12,
           blur: 10,
           alignment: Alignment.centerLeft,

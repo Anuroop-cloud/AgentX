@@ -327,7 +327,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     Expanded(
                       child: GlassmorphicContainer(
                         width: double.infinity,
-                        height: null,
+                        height: 56,
                         borderRadius: 20,
                         blur: 20,
                         alignment: Alignment.centerLeft,
@@ -427,7 +427,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(width: 12),
           GlassmorphicContainer(
-            width: null,
+            width: 200,
             height: 56,
             borderRadius: 16,
             blur: 20,

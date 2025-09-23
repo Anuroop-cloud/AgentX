@@ -104,7 +104,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 // Sign up form
                 GlassmorphicContainer(
                   width: double.infinity,
-                  height: null,
+                  height: 600,
                   borderRadius: 20,
                   blur: 20,
                   alignment: Alignment.bottomCenter,
